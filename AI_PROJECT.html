@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Route Rush - Pathfinding Visualizer</title>
+  <style>
+    body { font-family: Arial; text-align: center; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(38, 20px);
+      justify-content: center;
+      margin-top: 20px;
+    }
+    .cell {
+      width: 20px;
+      height: 20px;
+      border: 1px solid #ddd;
+    }
+    .wall { background: black; }
+    .start { background: green; }
+    .end { background: red; }
+    .visited { background: lightblue; }
+    .path { background: yellow; }
+    button { margin: 5px; }
+  </style>
+</head>
+
+<body>
+
+<h2>Route Rush - Pathfinding Visualizer</h2>
+
+<button onclick="runAlgo('bfs')">BFS</button>
+<button onclick="runAlgo('dfs')">DFS</button>
+<button onclick="runAlgo('dijkstra')">Dijkstra</button>
+<button onclick="runAlgo('astar')">A*</button>
+<button onclick="resetGrid()">Reset</button>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const ROWS = 22, COLS = 38;
+let grid = [];
+let start = {r: 10, c: 5};
+let end = {r: 10, c: 30};
+
+function initGrid() {
+  grid = [];
+  const container = document.getElementById("grid");
+  container.innerHTML = "";
+
+  for (let r = 0; r < ROWS; r++) {
+    let row = [];
+    for (let c = 0; c < COLS; c++) {
+      let cell = document.createElement("div");
+      cell.className = "cell";
+      cell.onclick = () => toggleWall(r,c);
+
+      container.appendChild(cell);
+
+      row.push({
+        r, c,
+        type: "empty",
+        g: Infinity,
+        f: Infinity,
+        prev: null,
+        el: cell
+      });
+    }
+    grid.push(row);
+  }
+
+  grid[start.r][start.c].type = "start";
+  grid[end.r][end.c].type = "end";
+
+  updateUI();
+}
+
+function updateUI() {
+  for (let row of grid) {
+    for (let node of row) {
+      node.el.className = "cell " + node.type;
+    }
+  }
+}
+
+function toggleWall(r,c) {
+  let node = grid[r][c];
+  if (node.type === "empty") node.type = "wall";
+  else if (node.type === "wall") node.type = "empty";
+  updateUI();
+}
+
+function getNeighbors(n) {
+  let dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  let res = [];
+  for (let [dr,dc] of dirs) {
+    let r = n.r+dr, c = n.c+dc;
+    if (r>=0 && r<ROWS && c>=0 && c<COLS)
+      res.push(grid[r][c]);
+  }
+  return res;
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function animate(visited, endNode) {
+  for (let n of visited) {
+    if (n.type === "empty") {
+      n.type = "visited";
+      updateUI();
+      await sleep(10);
+    }
+  }
+
+  let path = [];
+  let cur = endNode;
+  while (cur) {
+    path.unshift(cur);
+    cur = cur.prev;
+  }
+
+  for (let n of path) {
+    if (n.type !== "start" && n.type !== "end") {
+      n.type = "path";
+      updateUI();
+      await sleep(30);
+    }
+  }
+}
+
+function resetNodes() {
+  for (let row of grid) {
+    for (let n of row) {
+      n.g = Infinity;
+      n.f = Infinity;
+      n.prev = null;
+      if (n.type === "visited" || n.type === "path")
+        n.type = "empty";
+    }
+  }
+}
+
+async function runAlgo(type) {
+  resetNodes();
+
+  let visited = [];
+  let s = grid[start.r][start.c];
+  let e = grid[end.r][end.c];
+
+  if (type === "bfs") visited = bfs(s,e);
+  if (type === "dfs") visited = dfs(s,e);
+  if (type === "dijkstra") visited = dijkstra(s,e);
+  if (type === "astar") visited = astar(s,e);
+
+  await animate(visited, e);
+}
+
+// BFS
+function bfs(start,end) {
+  let q=[start], vis=new Set(), order=[];
+  vis.add(start.r+","+start.c);
+
+  while(q.length){
+    let cur=q.shift();
+    order.push(cur);
+    if(cur===end) break;
+
+    for(let nb of getNeighbors(cur)){
+      let key=nb.r+","+nb.c;
+      if(!vis.has(key)&&nb.type!=="wall"){
+        vis.add(key);
+        nb.prev=cur;
+        q.push(nb);
+      }
+    }
+  }
+  return order;
+}
+
+// DFS
+function dfs(start,end){
+  let st=[start], vis=new Set(), order=[];
+  vis.add(start.r+","+start.c);
+
+  while(st.length){
+    let cur=st.pop();
+    order.push(cur);
+    if(cur===end) break;
+
+    for(let nb of getNeighbors(cur)){
+      let key=nb.r+","+nb.c;
+      if(!vis.has(key)&&nb.type!=="wall"){
+        vis.add(key);
+        nb.prev=cur;
+        st.push(nb);
+      }
+    }
+  }
+  return order;
+}
+
+// Dijkstra
+function dijkstra(start,end){
+  start.g=0;
+  let pq=[start], order=[];
+
+  while(pq.length){
+    pq.sort((a,b)=>a.g-b.g);
+    let cur=pq.shift();
+    order.push(cur);
+    if(cur===end) break;
+
+    for(let nb of getNeighbors(cur)){
+      let ng=cur.g+1;
+      if(ng<nb.g){
+        nb.g=ng;
+        nb.prev=cur;
+        pq.push(nb);
+      }
+    }
+  }
+  return order;
+}
+
+// A*
+function heuristic(a,b){
+  return Math.abs(a.r-b.r)+Math.abs(a.c-b.c);
+}
+
+function astar(start,end){
+  start.g=0;
+  start.f=heuristic(start,end);
+  let open=[start], order=[];
+
+  while(open.length){
+    open.sort((a,b)=>a.f-b.f);
+    let cur=open.shift();
+    order.push(cur);
+    if(cur===end) break;
+
+    for(let nb of getNeighbors(cur)){
+      let ng=cur.g+1;
+      if(ng<nb.g){
+        nb.g=ng;
+        nb.f=ng+heuristic(nb,end);
+        nb.prev=cur;
+        open.push(nb);
+      }
+    }
+  }
+  return order;
+}
+
+function resetGrid() {
+  initGrid();
+}
+
+initGrid();
+</script>
+
+</body>
+</html>
